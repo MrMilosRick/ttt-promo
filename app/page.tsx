@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 type Cell = "X" | "O" | null;
 type Result = "win" | "lose" | "draw" | null;
+type Difficulty = "easy" | "smart";
 
 const LINES = [
   [0, 1, 2],
@@ -35,7 +36,6 @@ function availableMoves(board: Cell[]) {
   return moves;
 }
 
-// minimax: компьютер (O) играет сильно — выглядит “профессионально”
 function minimax(board: Cell[], isMax: boolean, depth: number): number {
   const w = winner(board);
   if (w === "O") return 10 - depth;
@@ -81,6 +81,11 @@ function bestMove(board: Cell[]): number {
   return move;
 }
 
+function randomMove(board: Cell[]): number {
+  const moves = availableMoves(board);
+  return moves[Math.floor(Math.random() * moves.length)];
+}
+
 function promoCode5(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
 }
@@ -100,6 +105,7 @@ export default function Page() {
   const [result, setResult] = useState<Result>(null);
   const [promo, setPromo] = useState<string | null>(null);
   const [tgStatus, setTgStatus] = useState<"idle" | "sent" | "fail">("idle");
+  const [difficulty, setDifficulty] = useState<Difficulty>("smart");
 
   const statusText = useMemo(() => {
     if (result === "win") return "Ты выиграла 🎉";
@@ -154,7 +160,12 @@ export default function Page() {
 
     setTimeout(async () => {
       const cpuBoard = [...next];
-      const m = bestMove(cpuBoard);
+
+      const m =
+        difficulty === "easy" && Math.random() < 0.65
+          ? randomMove(cpuBoard)
+          : bestMove(cpuBoard);
+
       cpuBoard[m] = "O";
       setBoard(cpuBoard);
 
@@ -172,15 +183,15 @@ export default function Page() {
   }
 
   return (
-    <main className="min-h-screen w-full bg-gradient-to-b from-rose-50 via-pink-50 to-amber-50 flex items-center justify-center p-4">
+    <main className="min-h-screen w-full text-zinc-900 bg-gradient-to-b from-rose-50 via-pink-50 to-amber-50 flex items-center justify-center p-4">
       <div className="w-full max-w-xl">
-        <div className="rounded-3xl bg-white/80 backdrop-blur shadow-xl border border-pink-100 p-6 md:p-8">
+        <div className="rounded-3xl bg-white/85 backdrop-blur shadow-xl border border-pink-100 p-6 md:p-8">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-zinc-900">
                 Крестики-нолики 💗
               </h1>
-              <p className="text-sm md:text-base text-zinc-600 mt-1">
+              <p className="text-sm md:text-base text-zinc-700 mt-1">
                 Играй против компьютера. Победа = промокод 🎁
               </p>
             </div>
@@ -191,6 +202,38 @@ export default function Page() {
             >
               Сбросить
             </button>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div className="text-sm text-zinc-700">
+              Сложность:{" "}
+              <span className="font-semibold text-zinc-900">
+                {difficulty === "easy" ? "Новичок" : "Гроссмейстер"}
+              </span>
+            </div>
+
+            <div className="flex rounded-2xl bg-white border border-zinc-200 shadow-sm p-1">
+              <button
+                onClick={() => setDifficulty("easy")}
+                className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
+                  difficulty === "easy"
+                    ? "bg-rose-500 text-white"
+                    : "text-zinc-700 hover:bg-zinc-50"
+                }`}
+              >
+                Новичок
+              </button>
+              <button
+                onClick={() => setDifficulty("smart")}
+                className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
+                  difficulty === "smart"
+                    ? "bg-zinc-900 text-white"
+                    : "text-zinc-700 hover:bg-zinc-50"
+                }`}
+              >
+                Гроссмейстер
+              </button>
+            </div>
           </div>
 
           <div className="mt-6 grid grid-cols-3 gap-3">
@@ -215,14 +258,18 @@ export default function Page() {
           </div>
 
           <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="text-base md:text-lg font-medium">{statusText}</div>
-            <div className="text-xs text-zinc-500">
+            <div className="text-base md:text-lg font-semibold text-zinc-900">
+              {statusText}
+            </div>
+            <div className="text-xs text-zinc-600">
               Telegram:{" "}
-              {tgStatus === "idle"
-                ? "—"
-                : tgStatus === "sent"
-                ? "сообщение отправлено ✅"
-                : "ошибка отправки ⚠️"}
+              <span className="font-medium text-zinc-800">
+                {tgStatus === "idle"
+                  ? "—"
+                  : tgStatus === "sent"
+                  ? "сообщение отправлено ✅"
+                  : "ошибка отправки ⚠️"}
+              </span>
             </div>
           </div>
 
@@ -236,11 +283,13 @@ export default function Page() {
               >
                 {result === "win" && (
                   <>
-                    <div className="text-lg font-semibold">Твой промокод 🎁</div>
+                    <div className="text-lg font-semibold text-zinc-900">
+                      Твой промокод 🎁
+                    </div>
                     <div className="mt-2 text-3xl font-bold tracking-widest text-zinc-900">
                       {promo}
                     </div>
-                    <p className="mt-2 text-sm text-zinc-600">
+                    <p className="mt-2 text-sm text-zinc-700">
                       Сохрани его — он пригодится при оплате.
                     </p>
                   </>
@@ -248,8 +297,10 @@ export default function Page() {
 
                 {result === "lose" && (
                   <>
-                    <div className="text-lg font-semibold">Попробуешь ещё раз?</div>
-                    <p className="mt-2 text-sm text-zinc-600">
+                    <div className="text-lg font-semibold text-zinc-900">
+                      Попробуешь ещё раз?
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-700">
                       Иногда компьютеру просто везёт 😌
                     </p>
                   </>
@@ -257,8 +308,10 @@ export default function Page() {
 
                 {result === "draw" && (
                   <>
-                    <div className="text-lg font-semibold">Ничья 🤝</div>
-                    <p className="mt-2 text-sm text-zinc-600">
+                    <div className="text-lg font-semibold text-zinc-900">
+                      Ничья 🤝
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-700">
                       Давай ещё одну — победа близко.
                     </p>
                   </>
@@ -283,7 +336,7 @@ export default function Page() {
             )}
           </AnimatePresence>
 
-          <div className="mt-5 text-xs text-zinc-500">
+          <div className="mt-5 text-xs text-zinc-600">
             💡 Победа выдаёт промокод и отправляет уведомление в Telegram. Токен хранится в ENV и не попадает в браузер.
           </div>
         </div>
