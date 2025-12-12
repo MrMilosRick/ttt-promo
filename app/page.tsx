@@ -1,65 +1,293 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useMemo, useState } from "react";
+import confetti from "canvas-confetti";
+import { motion, AnimatePresence } from "framer-motion";
+
+type Cell = "X" | "O" | null;
+type Result = "win" | "lose" | "draw" | null;
+
+const LINES = [
+  [0, 1, 2],
+  [3, 4, 5],
+  [6, 7, 8],
+  [0, 3, 6],
+  [1, 4, 7],
+  [2, 5, 8],
+  [0, 4, 8],
+  [2, 4, 6],
+];
+
+function winner(board: Cell[]): "X" | "O" | null {
+  for (const [a, b, c] of LINES) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+  }
+  return null;
+}
+
+function full(board: Cell[]) {
+  return board.every((c) => c !== null);
+}
+
+function availableMoves(board: Cell[]) {
+  const moves: number[] = [];
+  for (let i = 0; i < 9; i++) if (!board[i]) moves.push(i);
+  return moves;
+}
+
+// minimax: компьютер (O) играет сильно — выглядит “профессионально”
+function minimax(board: Cell[], isMax: boolean, depth: number): number {
+  const w = winner(board);
+  if (w === "O") return 10 - depth;
+  if (w === "X") return depth - 10;
+  if (full(board)) return 0;
+
+  const moves = availableMoves(board);
+
+  if (isMax) {
+    let best = -Infinity;
+    for (const m of moves) {
+      board[m] = "O";
+      best = Math.max(best, minimax(board, false, depth + 1));
+      board[m] = null;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const m of moves) {
+      board[m] = "X";
+      best = Math.min(best, minimax(board, true, depth + 1));
+      board[m] = null;
+    }
+    return best;
+  }
+}
+
+function bestMove(board: Cell[]): number {
+  const moves = availableMoves(board);
+  let bestScore = -Infinity;
+  let move = moves[0];
+
+  for (const m of moves) {
+    board[m] = "O";
+    const score = minimax(board, false, 0);
+    board[m] = null;
+
+    if (score > bestScore) {
+      bestScore = score;
+      move = m;
+    }
+  }
+  return move;
+}
+
+function promoCode5(): string {
+  return String(Math.floor(10000 + Math.random() * 90000));
+}
+
+async function notifyTelegram(result: "win" | "lose", code?: string) {
+  const res = await fetch("/api/notify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ result, code }),
+  });
+  if (!res.ok) throw new Error("notify failed");
+}
+
+export default function Page() {
+  const [board, setBoard] = useState<Cell[]>(Array(9).fill(null));
+  const [turn, setTurn] = useState<"player" | "cpu">("player");
+  const [result, setResult] = useState<Result>(null);
+  const [promo, setPromo] = useState<string | null>(null);
+  const [tgStatus, setTgStatus] = useState<"idle" | "sent" | "fail">("idle");
+
+  const statusText = useMemo(() => {
+    if (result === "win") return "Ты выиграла 🎉";
+    if (result === "lose") return "Упс… в этот раз не получилось";
+    if (result === "draw") return "Ничья. Ещё раунд?";
+    return turn === "player" ? "Твой ход" : "Ход компьютера…";
+  }, [result, turn]);
+
+  function reset() {
+    setBoard(Array(9).fill(null));
+    setTurn("player");
+    setResult(null);
+    setPromo(null);
+    setTgStatus("idle");
+  }
+
+  async function finish(res: Result, code?: string) {
+    setResult(res);
+    if (res === "win" && code) setPromo(code);
+
+    try {
+      if (res === "win") await notifyTelegram("win", code);
+      if (res === "lose") await notifyTelegram("lose");
+      setTgStatus("sent");
+    } catch {
+      setTgStatus("fail");
+    }
+  }
+
+  async function onPlayerClick(i: number) {
+    if (result) return;
+    if (turn !== "player") return;
+    if (board[i]) return;
+
+    const next = [...board];
+    next[i] = "X";
+    setBoard(next);
+
+    const w1 = winner(next);
+    if (w1 === "X") {
+      const code = promoCode5();
+      confetti({ particleCount: 140, spread: 70, origin: { y: 0.7 } });
+      await finish("win", code);
+      return;
+    }
+    if (full(next)) {
+      setResult("draw");
+      return;
+    }
+
+    setTurn("cpu");
+
+    setTimeout(async () => {
+      const cpuBoard = [...next];
+      const m = bestMove(cpuBoard);
+      cpuBoard[m] = "O";
+      setBoard(cpuBoard);
+
+      const w2 = winner(cpuBoard);
+      if (w2 === "O") {
+        await finish("lose");
+        return;
+      }
+      if (full(cpuBoard)) {
+        setResult("draw");
+        return;
+      }
+      setTurn("player");
+    }, 350);
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="min-h-screen w-full bg-gradient-to-b from-rose-50 via-pink-50 to-amber-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-xl">
+        <div className="rounded-3xl bg-white/80 backdrop-blur shadow-xl border border-pink-100 p-6 md:p-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+                Крестики-нолики 💗
+              </h1>
+              <p className="text-sm md:text-base text-zinc-600 mt-1">
+                Играй против компьютера. Победа = промокод 🎁
+              </p>
+            </div>
+
+            <button
+              onClick={reset}
+              className="shrink-0 rounded-2xl px-4 py-2 text-sm font-medium bg-zinc-900 text-white hover:opacity-90 active:opacity-80"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              Сбросить
+            </button>
+          </div>
+
+          <div className="mt-6 grid grid-cols-3 gap-3">
+            {board.map((cell, i) => (
+              <button
+                key={i}
+                onClick={() => onPlayerClick(i)}
+                className="aspect-square rounded-3xl bg-gradient-to-b from-white to-pink-50 border border-pink-200 shadow-sm hover:shadow transition flex items-center justify-center"
+              >
+                <motion.span
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: cell ? 1 : 0.6, opacity: cell ? 1 : 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 18 }}
+                  className={`text-4xl md:text-5xl font-semibold ${
+                    cell === "X" ? "text-rose-500" : "text-indigo-500"
+                  }`}
+                >
+                  {cell ?? ""}
+                </motion.span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="text-base md:text-lg font-medium">{statusText}</div>
+            <div className="text-xs text-zinc-500">
+              Telegram:{" "}
+              {tgStatus === "idle"
+                ? "—"
+                : tgStatus === "sent"
+                ? "сообщение отправлено ✅"
+                : "ошибка отправки ⚠️"}
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {(result === "win" || result === "lose" || result === "draw") && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="mt-6 rounded-3xl border border-pink-100 bg-white p-5 shadow-sm"
+              >
+                {result === "win" && (
+                  <>
+                    <div className="text-lg font-semibold">Твой промокод 🎁</div>
+                    <div className="mt-2 text-3xl font-bold tracking-widest text-zinc-900">
+                      {promo}
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-600">
+                      Сохрани его — он пригодится при оплате.
+                    </p>
+                  </>
+                )}
+
+                {result === "lose" && (
+                  <>
+                    <div className="text-lg font-semibold">Попробуешь ещё раз?</div>
+                    <p className="mt-2 text-sm text-zinc-600">
+                      Иногда компьютеру просто везёт 😌
+                    </p>
+                  </>
+                )}
+
+                {result === "draw" && (
+                  <>
+                    <div className="text-lg font-semibold">Ничья 🤝</div>
+                    <p className="mt-2 text-sm text-zinc-600">
+                      Давай ещё одну — победа близко.
+                    </p>
+                  </>
+                )}
+
+                <div className="mt-4 flex gap-3">
+                  <button
+                    onClick={reset}
+                    className="rounded-2xl px-5 py-2.5 font-medium bg-rose-500 text-white hover:opacity-90 active:opacity-80"
+                  >
+                    Играть ещё
+                  </button>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(promo ?? "")}
+                    disabled={!promo}
+                    className="rounded-2xl px-5 py-2.5 font-medium bg-zinc-100 text-zinc-900 disabled:opacity-50"
+                  >
+                    Скопировать код
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="mt-5 text-xs text-zinc-500">
+            💡 Победа выдаёт промокод и отправляет уведомление в Telegram. Токен хранится в ENV и не попадает в браузер.
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
